@@ -42,9 +42,8 @@ ajustar_modelo_lag <- function(x, lag_meses) {
     ) %>%
     ungroup() %>%
     filter(!is.na(insect) & !is.na(arachn) & !is.na(other) & !is.na(MNA_lag))
-  full.model <- try(glm(MNA_lag ~ (insect + arachn + other) * site + month,
-                        family = poisson(link = "log"),
-                        data = datos_lag, na.action = na.fail))
+  full.model <- try(glm.nb(MNA_lag ~ (insect + arachn + other) * site + month,
+                           data = datos_lag, na.action = na.fail))
   if(class(full.model)[1] == "try-error"){ 
     return(list(lag=lag_meses,
                 n_data = nrow(datos_lag),
