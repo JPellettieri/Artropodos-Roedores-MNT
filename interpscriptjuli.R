@@ -303,4 +303,72 @@ ggplot(datos_lag7, aes(x = time)) +
   ) +
   theme_minimal()
 
+#############################################################
+#Analizo insectos aracnidos y otros por separado, manteniendo el lag de 7 meses##
+datos_lag7_sep <- datos %>%
+  select(site, year, month, time, MNA, interp.insect, interp.arachn, interp.other) %>%
+  arrange(site, time) %>%
+  group_by(site) %>%
+  mutate(
+    lag_insect = lag(interp.insect, 7),
+    lag_arachn = lag(interp.arachn, 7),
+    lag_other  = lag(interp.other, 7)
+  ) %>%
+  ungroup() %>%
+  filter(!is.na(lag_insect), !is.na(lag_arachn), !is.na(lag_other)) %>%
+  mutate(
+    lag_insect_z = scale(lag_insect),
+    lag_arachn_z = scale(lag_arachn),
+    lag_other_z  = scale(lag_other)
+  )
+
+modelo_sep <- glmmTMB(
+  MNA ~ lag_insect_z + lag_arachn_z + lag_other_z + month + (1 | site),
+  family = nbinom2,
+  data = datos_lag7_sep
+)
+#Chequeo supuestos
+overdisp_fun(modelo_sep) #no hay sobredispersion
+
+# Simulación de residuos 
+residuos <- simulateResiduals(modelo_sep)
+plot(residuos) #Todo en orden
+testDispersion(residuos) #Todo en orden
+testZeroInflation(residuos) #Todo en orden
+#Resultados modelo
+summary(modelo_sep)
+
+# Predecir en escala link
+pred_sep <- predict(modelo_sep, newdata = datos_lag7_sep, type = "link", se.fit = TRUE)
+
+# Agregar predicciones al dataset
+datos_lag7_sep <- datos_lag7_sep %>%
+  mutate(
+    fit_link = pred_sep$fit,
+    se_link = pred_sep$se.fit,
+    lower_link = fit_link - 1.96 * se_link,
+    upper_link = fit_link + 1.96 * se_link,
+    pred = exp(fit_link),
+    lower = exp(lower_link),
+    upper = exp(upper_link)
+  )
+
+datos_lag7_sep <- datos_lag7_sep %>%
+  mutate(fecha = as.Date(paste(year, month, "01", sep = "-")))
+
+ggplot(datos_lag7_sep, aes(x = fecha)) +
+  geom_point(aes(y = MNA, color = "Observado"), size = 2, alpha = 0.7) +
+  geom_line(aes(y = pred, color = "Predicho"), size = 1) +
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "red", alpha = 0.2) +
+  facet_wrap(~ site, scales = "free_y") +
+  scale_color_manual(
+    name = "Abundancia",
+    values = c("Observado" = "black", "Predicho" = "red")
+  ) +
+  labs(
+    x = "Fecha",
+    y = "Abundancia de roedores (MNA)",
+    title = "Abundancia observada y predicha (con IC 95%) según insectos, arácnidos y otros (lag 7)"
+  ) +
+  theme_minimal()
 
