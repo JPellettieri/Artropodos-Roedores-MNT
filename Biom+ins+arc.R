@@ -149,28 +149,69 @@ for (l in lags_veg) {
 # Ordenar por el coeficiente más grande positivo
 resultados_veg[order(-resultados_veg$coef), ] # Me COEF max el lag de 10 meses 
 resultados_insect
-plot(resultados_insect$lag, resultados_insect$AIC, type="b", # Me AIC optimo el lag de 10 meses 
-     xlab="Lag insectos (meses)", ylab="AIC")
-
+plot(resultados_veg$lag, resultados_veg$AIC, type="b", # Me AIC optimo el lag de 10 meses 
+     xlab="Lag veg (meses)", ylab="AIC")
+plot(resultados_veg$lag, resultados_veg$coef, type="b", # Me AIC optimo el lag de 10 meses 
+     xlab="Lag veg (meses)", ylab="Coef")
 # Lag 10  Coef 0.5096642  p-value 3.830999e-02
 
 
-## Ahora veo cual es el lag optimo en insectos con el lag en plantas de 10 meses 
+########## Ahora veo cual es el lag optimo en artropodos con el lag en plantas de 10 meses #############
+lags_insect <- 0:12  
+resultados_insect <- data.frame(
+  lag = lags_insect,
+  coef = NA,
+  pvalue = NA
+)
 
+for (l in lags_insect) {
+  datos_temp <- datos_completos %>%
+    arrange(site, fecha) %>%
+    group_by(site) %>%
+    mutate(
+      lag_biomF  = lag(biomF, 10),  # fijo en 10
+      lag_insect = lag(interp.insect, l)
+    ) %>%
+    ungroup() %>%
+    filter(!is.na(lag_biomF), !is.na(lag_insect)) %>%
+    mutate(
+      lag_biomF_z  = scale(lag_biomF),
+      lag_insect_z = scale(lag_insect)
+    )
+  
+  mod <- glmmTMB(MNA ~ lag_insect_z + lag_biomF_z + mes + (1|site),
+                 family = nbinom2,
+                 data = datos_temp)
+  resumen <- summary(mod)
+  
+  resultados_insect$coef[resultados_insect$lag == l] <- 
+    resumen$coefficients$cond["lag_insect_z", "Estimate"]
+  
+  resultados_insect$pvalue[resultados_insect$lag == l] <- 
+    resumen$coefficients$cond["lag_insect_z", "Pr(>|z|)"]
+  
+  resultados_insect$AIC[resultados_insect$lag == l] <- AIC(mod)
+}
 
+resultados_insect
+plot(resultados_insect$lag, resultados_insect$AIC, type="b",
+     xlab="Lag insectos (meses)", ylab="AIC")
+plot(resultados_insect$lag, resultados_insect$coef, type="b",
+     xlab="Lag insectos (meses)", ylab="coef")
 
+##### Lag 2 meses  COEF 0.089899449 p.value 0.4137739 AIC 534.5757 # Ninguno dio significativo
 
 
 ####################### Modelo veg con lag de 10 meses y insectos con alg de 7 meses.
 
-# Generar lag de 7 meses para insectos y arácnidos, y de 9 meses para biomasa
+# Generar lag de 2 meses para insectos y arácnidos, y de 10 meses para biomasa
 datos_lags <- datos_completos %>%
   arrange(site, fecha) %>%
   group_by(site) %>%
   mutate(
-    lag_insect = lag(interp.insect, 7),
-    lag_arachn = lag(interp.arachn, 7),
-    lag_biomF  = lag(biomF, 9)
+    lag_insect = lag(interp.insect, 2),
+    lag_arachn = lag(interp.arachn, 2),
+    lag_biomF  = lag(biomF, 10)
   ) %>%
   ungroup()
 datos_modelo <- datos_lags %>%
@@ -187,8 +228,9 @@ modelo_lag_veg_insect_arachn <- glmmTMB(
   family = nbinom2,
   data = datos_modelo
 )
-library(DHARMa)
 
+
+#Chequeo supuestos todos dan bien!!
 # Simulación de residuos
 residuos <- simulateResiduals(modelo_lag_veg_insect_arachn)
 plot(residuos)
@@ -196,3 +238,40 @@ testDispersion(residuos)
 testZeroInflation(residuos)
 
 summary(modelo_lag_veg_insect_arachn)
+
+
+# Predecir en escala link
+pred <- predict(modelo_lag_veg_insect_arachn,
+                newdata = datos_modelo,
+                type = "link",
+                se.fit = TRUE)
+
+# Agregar predicciones al dataset
+datos_pred <- datos_modelo %>%
+  mutate(
+    fit_link = pred$fit,
+    se_link = pred$se.fit,
+    lower_link = fit_link - 1.96 * se_link,
+    upper_link = fit_link + 1.96 * se_link,
+    pred = exp(fit_link),
+    lower = exp(lower_link),
+    upper = exp(upper_link)
+  )
+
+# Graficar observado vs predicho
+ggplot(datos_pred, aes(x = fecha)) +
+  geom_point(aes(y = MNA, color = "Observado"), size = 2, alpha = 0.7) +
+  geom_line(aes(y = pred, color = "Predicho"), size = 1) +
+  geom_ribbon(aes(ymin = lower, ymax = upper),
+              fill = "red", alpha = 0.2) +
+  facet_wrap(~ site, scales = "free_y") +
+  scale_color_manual(
+    name = "Abundancia",
+    values = c("Observado" = "black", "Predicho" = "red")
+  ) +
+  labs(
+    x = "Fecha",
+    y = "Abundancia de roedores (MNA)",
+    title = "Abundancia observada y predicha (IC 95%)\nLag: insectos/arácnidos = 2 meses, biomasa = 10 meses"
+  ) +
+  theme_minimal()
