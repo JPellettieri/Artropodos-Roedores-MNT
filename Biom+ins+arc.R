@@ -6,9 +6,7 @@ library(tidyr)
 library(tidyverse)
 library(broom)
 library(lme4)
-library(dplyr)
 library(scales)
-library(ggplot2)
 library(glmmTMB)
 library(DHARMa)
 library(emmeans)
@@ -75,15 +73,11 @@ datos_pc_fecha <- datos_pc %>%
 
 # Hacer left_join con tu base original (la de 418 filas)
 datos_completos <- montana_filtrado %>%
-  left_join(datos_pc_fecha, by = c("site", "anio", "mes"))
+  left_join(datos_pc_fecha, by = c("site", "anio", "mes")) %>%
+  mutate(fecha = as.Date(paste(anio, mes, "01", sep = "-")))
 
 # Verificar estructura
 glimpse(datos_completos)
-
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(scales)
 
 # Asegurate de tener las columnas 'fecha' ya generadas
 datos_grafico <- datos_completos %>%
@@ -119,9 +113,55 @@ ggplot(datos_grafico, aes(x = fecha, y = valor, color = variable)) +
   ) +
   theme_minimal()
 
-#######################Modelo veg con lag de 9 meses y insectos con alg de 7 meses.
+########## chequeo lag vegetacion
+# Secuencia de lags a probar
+lags_veg <- 0:12  
+resultados_veg <- data.frame(
+  lag = lags_veg,
+  coef = NA,
+  pvalue = NA
+)
 
-library(dplyr)
+for (l in lags_veg) {
+  datos_temp <- datos_completos %>%
+    arrange(site, fecha) %>%
+    group_by(site) %>%
+    mutate(lag_biomF = lag(biomF, l)) %>%
+    ungroup() %>%
+    filter(!is.na(lag_biomF)) %>%
+    mutate(lag_biomF_z = scale(lag_biomF))
+  
+  mod <- glmmTMB(MNA ~ lag_biomF_z + mes + (1|site),
+                 family = nbinom2,
+                 data = datos_temp)
+  
+  resumen <- summary(mod)
+  
+  resultados_veg$coef[resultados_veg$lag == l] <- 
+    resumen$coefficients$cond["lag_biomF_z", "Estimate"]
+  
+  resultados_veg$pvalue[resultados_veg$lag == l] <- 
+    resumen$coefficients$cond["lag_biomF_z", "Pr(>|z|)"]
+  
+  resultados_insect$AIC[resultados_insect$lag == l] <- AIC(mod)
+}
+
+# Ordenar por el coeficiente más grande positivo
+resultados_veg[order(-resultados_veg$coef), ] # Me COEF max el lag de 10 meses 
+resultados_insect
+plot(resultados_insect$lag, resultados_insect$AIC, type="b", # Me AIC optimo el lag de 10 meses 
+     xlab="Lag insectos (meses)", ylab="AIC")
+
+# Lag 10  Coef 0.5096642  p-value 3.830999e-02
+
+
+## Ahora veo cual es el lag optimo en insectos con el lag en plantas de 10 meses 
+
+
+
+
+
+####################### Modelo veg con lag de 10 meses y insectos con alg de 7 meses.
 
 # Generar lag de 7 meses para insectos y arácnidos, y de 9 meses para biomasa
 datos_lags <- datos_completos %>%
@@ -143,7 +183,7 @@ datos_modelo <- datos_lags %>%
 library(glmmTMB)
 
 modelo_lag_veg_insect_arachn <- glmmTMB(
-  MNA ~ lag_insect_z + lag_arachn_z + lag_biomF_z + month + (1 | site),
+  MNA ~ lag_insect_z + lag_arachn_z + lag_biomF_z + mes + (1 | site),
   family = nbinom2,
   data = datos_modelo
 )
