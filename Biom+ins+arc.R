@@ -11,6 +11,7 @@ library(glmmTMB)
 library(DHARMa)
 library(emmeans)
 
+
 # Cargar el archivo
 load("MT_mice+insect+plant.RData")
 load("~/GitHub/Artropodos-Roedores-MNT/datos_Pol+Cas+artrop_interp.RData")
@@ -202,6 +203,59 @@ plot(resultados_insect$lag, resultados_insect$coef, type="b",
 ##### Lag 2 meses  COEF 0.089899449 p.value 0.4137739 AIC 534.5757 # Ninguno dio significativo
 
 
+### Ahora veo cual es el LAG optimo en aracnidos
+
+# Definir los lags a evaluar para arácnidos
+lags_arachn <- 0:12  
+resultados_arachn <- data.frame(
+  lag = lags_arachn,
+  coef = NA,
+  pvalue = NA,
+  AIC = NA
+)
+
+for (l in lags_arachn) {
+  datos_temp <- datos_completos %>%
+    arrange(site, fecha) %>%
+    group_by(site) %>%
+    mutate(
+      lag_biomF  = lag(biomF, 10),        # biomasa fija en 10 meses
+      lag_insect = lag(interp.insect, 2), # insectos fijos en 2 meses
+      lag_arachn = lag(interp.arachn, l)  # arácnidos variable
+    ) %>%
+    ungroup() %>%
+    filter(!is.na(lag_biomF), !is.na(lag_insect), !is.na(lag_arachn)) %>%
+    mutate(
+      lag_biomF_z  = scale(lag_biomF),
+      lag_insect_z = scale(lag_insect),
+      lag_arachn_z = scale(lag_arachn)
+    )
+  
+  # Modelo con arácnidos, biomasa y mes
+  mod <- glmmTMB(MNA ~ lag_arachn_z + lag_biomF_z + mes + (1|site),
+                 family = nbinom2,
+                 data = datos_temp)
+  
+  resumen <- summary(mod)
+  
+  resultados_arachn$coef[resultados_arachn$lag == l] <- 
+    resumen$coefficients$cond["lag_arachn_z", "Estimate"]
+  
+  resultados_arachn$pvalue[resultados_arachn$lag == l] <- 
+    resumen$coefficients$cond["lag_arachn_z", "Pr(>|z|)"]
+  
+  resultados_arachn$AIC[resultados_arachn$lag == l] <- AIC(mod)
+}
+
+# Resultados
+resultados_arachn #Me da 7 meses Max Coef neg
+
+# Gráficos
+plot(resultados_arachn$lag, resultados_arachn$AIC, type="b",
+     xlab="Lag arácnidos (meses)", ylab="AIC")
+
+plot(resultados_arachn$lag, resultados_arachn$coef, type="b",
+     xlab="Lag arácnidos (meses)", ylab="Coeficiente")
 ####################### Modelo veg con lag de 10 meses y insectos con alg de 7 meses.
 
 # Generar lag de 2 meses para insectos y arácnidos, y de 10 meses para biomasa
@@ -210,7 +264,7 @@ datos_lags <- datos_completos %>%
   group_by(site) %>%
   mutate(
     lag_insect = lag(interp.insect, 2),
-    lag_arachn = lag(interp.arachn, 2),
+    lag_arachn = lag(interp.arachn, 7),
     lag_biomF  = lag(biomF, 10)
   ) %>%
   ungroup()
@@ -275,3 +329,59 @@ ggplot(datos_pred, aes(x = fecha)) +
     title = "Abundancia observada y predicha (IC 95%)\nLag: insectos/arácnidos = 2 meses, biomasa = 10 meses"
   ) +
   theme_minimal()
+
+#######y si pruebo con un lugar q no use en el modelo q pasa?
+# 1. Armar dataset de GoldCreek con los mismos lags
+datos_goldcreek <- datos_completos %>%
+  filter(site == "GoldCreek") %>%
+  arrange(site, fecha) %>%
+  group_by(site) %>%
+  mutate(
+    lag_insect = lag(interp.insect, 2),   # insectos fijos en 2 meses
+    lag_arachn = lag(interp.arachn, 7),   # arácnidos fijos en 7 meses
+    lag_biomF  = lag(biomF, 10)           # biomasa fija en 10 meses
+  ) %>%
+  ungroup() %>%
+  filter(!is.na(lag_insect), !is.na(lag_arachn), !is.na(lag_biomF)) %>%
+  mutate(
+    lag_insect_z = scale(lag_insect),
+    lag_arachn_z = scale(lag_arachn),
+    lag_biomF_z  = scale(lag_biomF)
+  )
+
+# 2. Usar el modelo entrenado (solo Cascade y Polson) para predecir GoldCreek
+pred_gold <- predict(modelo_lag_veg_insect_arachn,
+                     newdata = datos_goldcreek,
+                     type = "link",
+                     se.fit = TRUE)
+
+# 3. Guardar las predicciones
+datos_gold_pred <- datos_goldcreek %>%
+  mutate(
+    fit_link = pred_gold$fit,
+    se_link = pred_gold$se.fit,
+    lower_link = fit_link - 1.96 * se_link,
+    upper_link = fit_link + 1.96 * se_link,
+    pred = exp(fit_link),
+    lower = exp(lower_link),
+    upper = exp(upper_link)
+  )
+
+# 4. Graficar abundancia observada vs predicha
+ggplot(datos_gold_pred, aes(x = fecha)) +
+  geom_point(aes(y = MNA, color = "Observado"), size = 2, alpha = 0.7) +
+  geom_line(aes(y = pred, color = "Predicho"), size = 1) +
+  geom_ribbon(aes(ymin = lower, ymax = upper),
+              fill = "red", alpha = 0.2) +
+  scale_color_manual(
+    name = "Abundancia",
+    values = c("Observado" = "black", "Predicho" = "red")
+  ) +
+  labs(
+    x = "Fecha",
+    y = "Abundancia de roedores (MNA)",
+    title = "Validación externa en GoldCreek\nModelo entrenado con Cascade y Polson"
+  ) +
+  theme_minimal()
+
+
