@@ -41,3 +41,4 @@ LAG insectos max en 2 meses
 LAG max en 10 meses
 <img width="1607" height="721" alt="image" src="https://github.com/user-attachments/assets/9707fdf1-45f0-4ab4-910d-aa0bffecc084" />
 LAG min en 7 meses
+<img width="1204" height="668" alt="image" src="https://github.com/user-attachments/assets/49dae4e0-9789-401a-9f28-a6b86a521019" />
