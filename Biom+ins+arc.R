@@ -18,65 +18,131 @@ load("~/GitHub/Artropodos-Roedores-MNT/datos_Pol+Cas+artrop_interp.RData")
 str(montana.full)
 str(datos_pc)
 
-# Filtrado del dataset
+# montana.full<- montana.full %>%
+#   mutate(
+#     anio = as.numeric(substr(session, 1, 4)),
+#     mes = as.numeric(substr(session, 5, 6)),
+#     fecha = as.Date(paste(anio, mes, "01", sep = "-"))
+#   ) %>%
+#   filter(site == "Polson",
+#          web == 5,
+#          anio >= 2001, anio <= 2009) %>%
+#   select(site, web, session, time, MNA, biomF, anio, mes, fecha)
+
+    # # Filtrado del dataset
+    # montana_filtrado <- montana.full %>%
+    #   mutate( 
+    #     anio = as.numeric(substr(session, 1, 4)),
+    #     mes = as.numeric(substr(session, 5, 6)),
+    #     fecha = as.Date(paste(anio, mes, "01", sep = "-") )) %>%
+    #   # Aplicar filtros por año y sitio
+    #   filter(site %in% c("Cascade", "Polson"),
+    #          anio >= 2000, anio <= 2012) %>%
+    #   # Seleccionar solo columnas necesarias
+    #   select(site, session, time, MNA, biomF, anio, mes)
+    # 
+    # # Ver un resumen
+    # glimpse(montana_filtrado)
+    # 
+    # datos_plot <- montana_filtrado %>%
+    #   mutate(
+    #     anio = as.numeric(substr(session, 1, 4)),
+    #     mes = as.numeric(substr(session, 5, 6)),
+    #     fecha = as.Date(paste(anio, mes, "01", sep = "-")),
+    #     MNA_escalado = rescale(MNA),
+    #     biomF_escalado = rescale(biomF)
+    #   ) %>%
+    #   pivot_longer(cols = c(MNA_escalado, biomF_escalado),
+    #                names_to = "variable", values_to = "valor") %>%
+    #   mutate(
+    #     variable = recode(variable,
+    #                       MNA_escalado = "MNA (roedores)",
+    #                       biomF_escalado = "Biomasa")
+    #   )
+    # # Graficar
+    # ggplot(datos_plot, aes(x = fecha, y = valor, color = variable)) +
+    #   geom_line(size = 1.2) +
+    #   geom_point(size = 2) +
+    #   facet_wrap(~ site, scales = "free_y") +
+    #   scale_color_manual(values = c("MNA (roedores)" = "#d95f02", "Biomasa F" = "#1b9e77")) +
+    #   labs(
+    #     title = "Evolución temporal de MNA y Biomasa F (2000–2012)",
+    #     x = "Fecha",
+    #     y = "Valor escalado (0–1)",
+    #     color = "Variable"
+    #   ) +
+    #   theme_minimal()
+    # 
+    # 
+    # #############Hago fusion de las dos bases de datos!! #############
+    # 
+    # # Renombrar year y month para que coincidan con tu base
+    # datos_pc_fecha <- datos_pc %>%
+    #   rename(anio = year, mes = month) %>%
+    #   select(site, anio, mes,
+    #          insect, arachn, other,
+    #          interp.insect, interp.arachn, interp.other)
+    # 
+    # # Hacer left_join con tu base original (la de 418 filas)
+    # datos_completos <- montana_filtrado %>%
+    #   left_join(datos_pc_fecha, by = c("site", "anio", "mes")) %>%
+    #   mutate(fecha = as.Date(paste(anio, mes, "01", sep = "-")))
+    # 
+    # datos_pc_fecha %>%
+    #   count(site, anio, mes) %>%
+    #   filter(n > 1)
+    # montana.full %>%
+    #   count(site, session) %>%
+    #   filter(n > 1)
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+
+# 1. Filtrar montana.full y mantener todas las webs
 montana_filtrado <- montana.full %>%
-  mutate( 
+  mutate(
     anio = as.numeric(substr(session, 1, 4)),
     mes = as.numeric(substr(session, 5, 6)),
-    fecha = as.Date(paste(anio, mes, "01", sep = "-") )) %>%
-  # Aplicar filtros por año y sitio
+    fecha = as.Date(paste(anio, mes, "01", sep = "-"))
+  ) %>%
   filter(site %in% c("Cascade", "Polson"),
          anio >= 2000, anio <= 2012) %>%
-  # Seleccionar solo columnas necesarias
-  select(site, session, time, MNA, biomF, anio, mes)
+  select(site, web, session, time, MNA, biomF, anio, mes, fecha)
 
-# Ver un resumen
 glimpse(montana_filtrado)
 
-datos_plot <- montana_filtrado %>%
-  mutate(
-    anio = as.numeric(substr(session, 1, 4)),
-    mes = as.numeric(substr(session, 5, 6)),
-    fecha = as.Date(paste(anio, mes, "01", sep = "-")),
-    MNA_escalado = rescale(MNA),
-    biomF_escalado = rescale(biomF)
-  ) %>%
-  pivot_longer(cols = c(MNA_escalado, biomF_escalado),
-               names_to = "variable", values_to = "valor") %>%
-  mutate(
-    variable = recode(variable,
-                      MNA_escalado = "MNA (roedores)",
-                      biomF_escalado = "Biomasa F")
-  )
-# Graficar
-ggplot(datos_plot, aes(x = fecha, y = valor, color = variable)) +
-  geom_line(size = 1.2) +
-  geom_point(size = 2) +
-  facet_wrap(~ site, scales = "free_y") +
-  scale_color_manual(values = c("MNA (roedores)" = "#d95f02", "Biomasa F" = "#1b9e77")) +
-  labs(
-    title = "Evolución temporal de MNA y Biomasa F (2000–2012)",
-    x = "Fecha",
-    y = "Valor escalado (0–1)",
-    color = "Variable"
-  ) +
-  theme_minimal()
-
-
-#############Hago fusion de las dos bases de datos!! #############
-
-# Renombrar year y month para que coincidan con tu base
+# 2. Preparar datos de abundancia de insectos/arácnidos/vegetación
 datos_pc_fecha <- datos_pc %>%
   rename(anio = year, mes = month) %>%
   select(site, anio, mes,
          insect, arachn, other,
          interp.insect, interp.arachn, interp.other)
 
-# Hacer left_join con tu base original (la de 418 filas)
+# 3. Hacer left_join para que cada web tenga los mismos datos de abundancia
 datos_completos <- montana_filtrado %>%
-  left_join(datos_pc_fecha, by = c("site", "anio", "mes")) %>%
-  mutate(fecha = as.Date(paste(anio, mes, "01", sep = "-")))
+  left_join(datos_pc_fecha, by = c("site", "anio", "mes"))
 
+glimpse(datos_completos)
+
+# 4. Pivotar para gráfico largo y renombrar variables
+datos_grafico <- datos_completos %>%
+  pivot_longer(
+    cols = c(MNA, biomF, interp.insect, interp.arachn),
+    names_to = "variable",
+    values_to = "valor"
+  ) %>%
+  mutate(
+    variable = recode(variable,
+                      MNA = "MNA (roedores)",
+                      biomF = "Biomasa F",
+                      interp.insect = "Insectos interpolados",
+                      interp.arachn = "Arácnidos interpolados")
+  )
+
+
+str(montana.full)
 # Verificar estructura
 glimpse(datos_completos)
 
@@ -86,15 +152,17 @@ datos_grafico <- datos_completos %>%
     fecha = as.Date(paste(anio, mes, "01", sep = "-")),
     MNA_escalado = rescale(MNA),
     biomF_escalado = rescale(biomF),
-    interp_insect_escalado = rescale(interp.insect)
+    interp_insect_escalado = rescale(interp.insect),
+    interp_arac_escalado = rescale(interp.arachn)
   ) %>%
-  pivot_longer(cols = c(MNA_escalado, biomF_escalado, interp_insect_escalado),
+  pivot_longer(cols = c(MNA_escalado, biomF_escalado, interp_insect_escalado, interp_arac_escalado),
                names_to = "variable", values_to = "valor") %>%
   mutate(
     variable = recode(variable,
                       MNA_escalado = "MNA (roedores)",
-                      biomF_escalado = "Biomasa F",
-                      interp_insect_escalado = "Insectos interpolados")
+                      biomF_escalado = "Biomasa",
+                      interp_insect_escalado = "Insectos",
+                      interp_arac_escalado= "Arácnidos")
   )
 
 # Graficar
@@ -103,13 +171,78 @@ ggplot(datos_grafico, aes(x = fecha, y = valor, color = variable)) +
   geom_point(size = 2, alpha = 0.8) +
   facet_wrap(~ site, scales = "free_y") +
   scale_color_manual(values = c(
-    "MNA (roedores)" = "#d95f02",
-    "Biomasa F" = "#1b9e77",
-    "Insectos interpolados" = "#7570b3")) +
+    "MNA (roedores)" = "#DAA130",
+    "Biomasa" = "#9DC74D",
+    "Insectos" = "#882969",
+    "Arácnidos" = "#3D9DA1")) +
   labs(
-    title = "Evolución de MNA, Biomasa F e Insectos interpolados (2000–2012)",
+    title = "Evolución de MNA, Biomasa y Artrópodos (2000–2012)",
     x = "Fecha",
     y = "Valor escalado (0–1)",
+    color = "Variable"
+  ) +
+  theme_minimal()
+
+
+# Armar datos sin reescalar
+datos_grafico <- datos_completos %>%
+  pivot_longer(cols = c(MNA, biomF, interp.insect, interp.arachn),
+               names_to = "variable", values_to = "valor") %>%
+  mutate(
+    variable = recode(variable,
+                      MNA = "MNA (roedores)",
+                      biomF = "Biomasa F",
+                      interp.insect = "Insectos interpolados",
+                      interp.arachn = "Arácnidos interpolados")
+  )
+
+datos_cascade <- datos_grafico %>%
+  filter(site == "Cascade",
+         anio >= 2001, anio <= 2005)
+
+# ggplot(datos_cascade, aes(x = fecha, y = valor, color = variable)) +
+#   geom_line(size = 1.2) +
+#   geom_point(size = 2, alpha = 0.8) +
+#   facet_wrap(~ variable, scales = "free_y", ncol = 1) +  # un panel por variable
+#   labs(
+#     title = "Evolución temporal en Cascade (2001–2005)",
+#     x = "Fecha",
+#     y = "Valor original",
+#     color = "Variable"
+#   ) +
+#   theme_minimal() +
+#   theme(legend.position = "none")
+
+datos_polson <- datos_grafico %>%
+  filter(site == "Polson",
+         anio >= 2001, anio <= 2009)
+# 
+# ggplot(datos_polson, aes(x = fecha, y = valor, color = variable)) +
+#   geom_line(size = 1.2) +
+#   geom_point(size = 2, alpha = 0.8) +
+#   facet_wrap(~ variable, scales = "free_y", ncol = 1) +  # un panel por variable
+#   labs(
+#     title = "Evolución temporal en Polson (2001–2005)",
+#     x = "Fecha",
+#     y = "Valor original",
+#     color = "Variable"
+#   ) +
+#   theme_minimal() +
+#   theme(legend.position = "none")
+#con curvas suavizadas
+ggplot(datos_polson, aes(x = fecha, y = valor, color = variable)) +
+  geom_point(size = 2.5, alpha = 1) +   # puntos sueltos
+  geom_smooth(se = FALSE, span = 0.1, alpha = 0.1, size = 0.2) + # curva suavizada
+  scale_color_manual(values = c(
+    "MNA (roedores)" = "#DAA130",
+    "Biomasa" = "#9DC74D",
+    "Insectos" = "#882969",
+    "Arácnidos" = "#3D9DA1"))+
+  facet_wrap(~ variable, scales = "free_y", ncol = 1) +
+  labs(
+    title = "Evolución temporal en Polson (2001–2005)",
+    x = "Fecha",
+    y = "Valor original",
     color = "Variable"
   ) +
   theme_minimal()
@@ -132,7 +265,7 @@ for (l in lags_veg) {
     filter(!is.na(lag_biomF)) %>%
     mutate(lag_biomF_z = scale(lag_biomF))
   
-  mod <- glmmTMB(MNA ~ lag_biomF_z + mes + (1|site),
+  mod <- glmmTMB(MNA ~ lag_biomF_z + mes + (1|site/web),
                  family = nbinom2,
                  data = datos_temp)
   
@@ -180,7 +313,7 @@ for (l in lags_insect) {
       lag_insect_z = scale(lag_insect)
     )
   
-  mod <- glmmTMB(MNA ~ lag_insect_z + lag_biomF_z + mes + (1|site),
+  mod <- glmmTMB(MNA ~ lag_insect_z + lag_biomF_z + mes + (1|site/web),
                  family = nbinom2,
                  data = datos_temp)
   resumen <- summary(mod)
@@ -232,7 +365,7 @@ for (l in lags_arachn) {
     )
   
   # Modelo con arácnidos, biomasa y mes
-  mod <- glmmTMB(MNA ~ lag_arachn_z + lag_biomF_z + mes + (1|site),
+  mod <- glmmTMB(MNA ~ lag_arachn_z + lag_biomF_z + mes + (1|site/web),
                  family = nbinom2,
                  data = datos_temp)
   
@@ -259,7 +392,7 @@ plot(resultados_arachn$lag, resultados_arachn$coef, type="b",
 ####################### Modelo veg con lag de 10 meses y insectos con alg de 7 meses.
 
 # Generar lag de 2 meses para insectos y arácnidos, y de 10 meses para biomasa
-datos_lags <- datos_completos %>%
+datos_lags <- datos_completosGC %>%
   arrange(site, fecha) %>%
   group_by(site) %>%
   mutate(
@@ -278,10 +411,9 @@ datos_modelo <- datos_lags %>%
 library(glmmTMB)
 
 modelo_lag_veg_insect_arachn <- glmmTMB(
-  MNA ~ lag_insect_z + lag_arachn_z + lag_biomF_z + mes + (1 | site),
+  MNA ~ lag_insect_z + lag_arachn_z + lag_biomF_z + mes + (1 | site/web),
   family = nbinom2,
-  data = datos_modelo
-)
+  data = datos_modelo)
 
 
 #Chequeo supuestos todos dan bien!!
@@ -317,11 +449,11 @@ ggplot(datos_pred, aes(x = fecha)) +
   geom_point(aes(y = MNA, color = "Observado"), size = 2, alpha = 0.7) +
   geom_line(aes(y = pred, color = "Predicho"), size = 1) +
   geom_ribbon(aes(ymin = lower, ymax = upper),
-              fill = "red", alpha = 0.2) +
+              fill = "#DAA130", alpha = 0.2) +
   facet_wrap(~ site, scales = "free_y") +
   scale_color_manual(
     name = "Abundancia",
-    values = c("Observado" = "black", "Predicho" = "red")
+    values = c("Observado" = "black", "Predicho" = "#DAA130")
   ) +
   labs(
     x = "Fecha",
@@ -330,9 +462,43 @@ ggplot(datos_pred, aes(x = fecha)) +
   ) +
   theme_minimal()
 
+
+###############################################################
 #######y si pruebo con un lugar q no use en el modelo q pasa?
+# Cargar el archivo
+load("MT_mice+insect+plant.RData") #con datos de biomasa
+load("~/GitHub/Artropodos-Roedores-MNT/datos_pcg.RData") # con interpolaciones
+
+##Fusionar bases de datos##
+datos_pcg<- datos_pcg %>%
+  mutate(
+    fecha = as.Date(paste(year, month, "01", sep = "-"))
+  )
+# 1. Filtrar montana.full y mantener todas las webs
+montana_GC <- montana.full %>%
+  mutate(
+    anio = as.numeric(substr(session, 1, 4)),
+    mes = as.numeric(substr(session, 5, 6)),
+    fecha = as.Date(paste(anio, mes, "01", sep = "-"))
+  ) 
+
+glimpse(montana_GC)
+
+# 2. Preparar datos de abundancia de insectos/arácnidos/vegetación
+datos_pcg_fecha <- datos_pcg %>%
+  rename(anio = year, mes = month) %>%
+  select(site, anio, mes,
+         insect, arachn, other,
+         interp.insect, interp.arachn, interp.other)
+
+# 3. Hacer left_join para que cada web tenga los mismos datos de abundancia
+datos_completosGC <- montana_GC %>%
+  left_join(datos_pcg_fecha, by = c("site", "anio", "mes"))
+
+glimpse(datos_completos)
+
 # 1. Armar dataset de GoldCreek con los mismos lags
-datos_goldcreek <- datos_completos %>%
+datos_goldcreek <- datos_completosGC %>%
   filter(site == "GoldCreek") %>%
   arrange(site, fecha) %>%
   group_by(site) %>%
@@ -372,10 +538,10 @@ ggplot(datos_gold_pred, aes(x = fecha)) +
   geom_point(aes(y = MNA, color = "Observado"), size = 2, alpha = 0.7) +
   geom_line(aes(y = pred, color = "Predicho"), size = 1) +
   geom_ribbon(aes(ymin = lower, ymax = upper),
-              fill = "red", alpha = 0.2) +
+              fill = "#DAA130", alpha = 0.2) +
   scale_color_manual(
     name = "Abundancia",
-    values = c("Observado" = "black", "Predicho" = "red")
+    values = c("Observado" = "black", "Predicho" = "#DAA130")
   ) +
   labs(
     x = "Fecha",

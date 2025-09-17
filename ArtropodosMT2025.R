@@ -3,12 +3,11 @@ library(dplyr)
 library(purrr)
 library(ggplot2)
 library(MuMIn)
-library(tidyr)
 
-load("~/GitHub/Artropodos-Roedores-MNT/montana.small completo.RData") #seteo juli
+load("~/Montana/montana.small completo.RData")
 
 
-# Elijo rango de años con datos de MNA y artrop
+# Elijo rango de a?os con datos de MNA y artrop
 min.year <- min(montana.small$year[!is.na(montana.small$insect)])
 max.year <- max(montana.small$year[!is.na(montana.small$MNA)])
 
@@ -20,6 +19,68 @@ datos_pc <- expand.grid(month=c(1:12),
   select(site,year,month) %>%
   left_join((montana.small %>% select(site,year,month,MNA,insect,arachn,other)),
             by=c('site','year','month'), unmatched='drop')
+datos_pc$time <- as.numeric(datos_pc$year)+(as.numeric(datos_pc$month)-1/2)/12
+
+fuzzy.factor <- function(x,x0,w){
+  return(pmin(pmax((x-(x0-w/2))/w,0),1)-pmin(pmax((x-(x0+1-w/2))/w,0),1))
+}
+
+xp=seq(-2,2,by=1/120)
+plot(xp,y=fuzzy.factor(xp,0,3/4),type='l',col='black')
+lines(xp,y=fuzzy.factor(xp,-1,3/4),col='red')
+lines(xp,y=fuzzy.factor(xp,1,3/4),col='green')
+
+
+for (yr in seq(min.year,max.year+1)) {
+  df <- data.frame(new.col=fuzzy.factor(datos_pc$time, yr,0.5))
+  if(yr == min.year)
+    plot(x=datos_pc$time, y=df$new.col, col=(1+yr-min.year), type = 'l')
+  else
+    lines(x=datos_pc$time, y=df$new.col, col=(1+yr-min.year))
+  colnames(df) <- sprintf("year%d",yr)
+  datos_pc<-cbind(datos_pc,df)
+}
+
+
+datos_pc$insect[datos_pc$month==2] <- 0
+insect.lm <- lm(log(1+(insect))~(I(1-cos(2*pi*time))+sin(2*pi*time))*
+                  (year2000+year2001+year2002+year2003+year2004+
+                     year2005+year2006+year2007+year2008+year2009)*site,
+                data=datos_pc)
+datos_pc$interp.insect <- exp(predict(insect.lm, datos_pc))-1
+
+plot(insect~time, type='p', data=datos_pc, col=site,
+     xlim=c(min.year,max.year+1),log='')
+lines(interp.insect~time, data=datos_pc,col=site, subset = site=="Cascade")
+lines(interp.insect~time, data=datos_pc,col=site, subset = site=="Polson")
+plot(insect.lm)
+
+datos_pc$arachn[datos_pc$month==2] <- 0
+arachn.lm <- lm(log(1+(arachn))~(I(1-cos(2*pi*time))+sin(2*pi*time))*
+                  (year2000+year2001+year2002+year2003+year2004+
+                     year2005+year2006+year2007+year2008+year2009)*site,
+                data=datos_pc)
+datos_pc$interp.arachn <- exp(predict(arachn.lm, datos_pc))-1
+
+plot(arachn~time, type='p', data=datos_pc, col=site,
+     xlim=c(min.year,max.year+1))
+lines(interp.arachn~time, data=datos_pc,col=site, subset = site=="Cascade")
+lines(interp.arachn~time, data=datos_pc,col=site, subset = site=="Polson")
+
+
+datos_pc$other[datos_pc$month==2] <- 0
+other.lm <- lm(log(1+(other))~(I(1-cos(2*pi*time))+sin(2*pi*time))*
+                  (year2000+year2001+year2002+year2003+year2004+
+                     year2005+year2006+year2007+year2008+year2009)*site,
+                data=datos_pc)
+datos_pc$interp.other <- exp(predict(other.lm, datos_pc))-1
+
+plot(other~time, type='p', data=datos_pc, col=site,
+     xlim=c(min.year,max.year+1))
+lines(interp.other~time, data=datos_pc,col=site, subset = site=="Cascade")
+lines(interp.other~time, data=datos_pc,col=site, subset = site=="Polson")
+
+
 datos_pc$month <- as.factor(datos_pc$month)
 
 datos_lag <- function(x, lag_meses){
@@ -42,18 +103,21 @@ ajustar_modelo_lag <- function(x, lag_meses) {
     ) %>%
     ungroup() %>%
     filter(!is.na(insect) & !is.na(arachn) & !is.na(other) & !is.na(MNA_lag))
-  full.model <- try(glm.nb(MNA_lag ~ (insect + arachn + other) * site + month,
-                           data = datos_lag, na.action = na.fail))
+  full.model <- try(glm(MNA_lag ~ (insect+arachn+other)*site + month,family = poisson(link = "log"),
+                        data = datos_lag,   na.action = na.fail))
   if(class(full.model)[1] == "try-error"){ 
     return(list(lag=lag_meses,
                 n_data = nrow(datos_lag),
+                disp = NA,
                 full = NULL,
                 nest = NULL,
                 aver = NULL))}
+  dispersion <- sum(residuals(full.model, type = "deviance")^2/fitted.values(full.model))/df.residual(full.model)
   nest.model <- try(dredge(full.model))
   if(class(nest.model)[1] == "try-error") {
     return(list(lag=lag_meses,
                 n_data = nrow(datos_lag),
+                disp = dispersion,
                 full = full.model,
                 nest = NULL,
                 aver = NULL))}
@@ -61,11 +125,13 @@ ajustar_modelo_lag <- function(x, lag_meses) {
   if(class(aver.model)[1] == "try-error"){ 
     return(list(lag=lag_meses,
                 n_data = nrow(datos_lag),
+                disp = dispersion,
                 full = full.model,
                 nest = nest.model,
                 aver = NULL))}
   return(list(lag=lag_meses,
               n_data = nrow(datos_lag),
+              disp = dispersion,
               full = full.model,
               nest = nest.model,
               aver = aver.model))
@@ -86,9 +152,9 @@ importancia_artropodos <- map_dfr(lista_modelos, function(m) {
       insect = imp["insect"],
       arachn = imp["arachn"],
       other = imp["other"],
-      insect_Cascade = imp["insect:siteCascade"],
-      arachn_Cascade = imp["arachn:siteCascade"],
-      other_Cascade = imp["other:siteCascade"]
+      insect_Polson = imp["insect:sitePolson"],
+      arachn_Polson = imp["arachn:sitePolson"],
+      other_Polson = imp["other:sitePolson"]
     )
   }
 }, .id = "modelo_id")
@@ -174,6 +240,10 @@ ggplot(coef_artropodos, aes(x = lag, y = Estimate, ymin = conf.low, ymax = conf.
   theme_minimal()
 
 #######################grafico de importancia relativa
+install.packages("systemfonts")
+install.packages("textshaping")
+library(tidyverse)
+
 importancia_artropodos_long <- importancia_artropodos %>%
   pivot_longer(cols = -c(lag, modelo_id), names_to = "efecto", values_to = "importancia")
 
@@ -191,7 +261,6 @@ ggplot(importancia_artropodos_long, aes(x = lag, y = importancia, color = efecto
 
 ############################################
 
-
 which(!map_lgl(lista_modelos, ~ is.null(.x$aver)))
 summary(lista_modelos[[2]]$aver)  # Porque lag = 1 está en la posición 2 (lag 0 es el primero)
 
@@ -208,7 +277,20 @@ for (i in seq_along(lista_modelos)) {
 
 
 
-
-
-
-
+ggplot(coef_artropodos, aes(x = lag, y = Estimate, ymin = conf.low, ymax = conf.high)) +
+  geom_line(aes(color = efecto), size = 1) +
+  geom_ribbon(aes(fill = efecto), alpha = 0.2, color = NA) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray40") +
+  facet_wrap(~ efecto, ncol = 1, scales = "free_y") +  # Subplots apilados verticalmente
+  labs(
+    title = "Efecto estimado de artr�podos sobre MNA por lag",
+    subtitle = "Modelos promediados por sitio",
+    x = "Lag (meses)",
+    y = "Coeficiente estimado AIC 95%"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",  # Oculta leyenda redundante
+    strip.text = element_text(face = "bold"),
+    panel.spacing = unit(1, "lines")  # Espaciado entre subplots
+  )
